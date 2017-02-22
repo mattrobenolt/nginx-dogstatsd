@@ -1,4 +1,7 @@
 /*
+ * nginx-dogstatsd module
+ * Copyright (C) 2017 Matt Robenolt
+ *
  * nginx-statsd module
  * Copyright (C) 2012 Zebrafish Labs Inc.
  *
@@ -46,10 +49,12 @@ typedef struct {
 
 	ngx_str_t			   		key;
 	ngx_uint_t			   		metric;
+	ngx_str_t			   		tags;
 	ngx_flag_t					valid;
 
 	ngx_http_complex_value_t 	*ckey;
 	ngx_http_complex_value_t 	*cmetric;
+	ngx_http_complex_value_t 	*ctags;
 	ngx_http_complex_value_t	*cvalid;
 } ngx_dogstatsd_stat_t;
 
@@ -88,29 +93,29 @@ static ngx_int_t ngx_http_dogstatsd_init(ngx_conf_t *cf);
 
 static ngx_command_t  ngx_http_dogstatsd_commands[] = {
 
-	{ ngx_string("statsd_server"),
+	{ ngx_string("dogstatsd_server"),
 	  NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1,
 	  ngx_http_dogstatsd_set_server,
 	  NGX_HTTP_LOC_CONF_OFFSET,
 	  0,
 	  NULL },
 
-	{ ngx_string("statsd_sample_rate"),
+	{ ngx_string("dogstatsd_sample_rate"),
 	  NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1,
 	  ngx_conf_set_num_slot,
 	  NGX_HTTP_LOC_CONF_OFFSET,
 	  offsetof(ngx_http_dogstatsd_conf_t, sample_rate),
 	  NULL },
 
-	{ ngx_string("statsd_count"),
-	  NGX_HTTP_SRV_CONF|NGX_HTTP_SIF_CONF|NGX_HTTP_LOC_CONF|NGX_HTTP_LIF_CONF|NGX_CONF_TAKE23,
+	{ ngx_string("dogstatsd_count"),
+	  NGX_HTTP_SRV_CONF|NGX_HTTP_SIF_CONF|NGX_HTTP_LOC_CONF|NGX_HTTP_LIF_CONF|NGX_CONF_TAKE23|NGX_CONF_TAKE4,
 	  ngx_http_dogstatsd_add_count,
 	  NGX_HTTP_LOC_CONF_OFFSET,
 	  0,
 	  NULL },
 
-	{ ngx_string("statsd_timing"),
-	  NGX_HTTP_SRV_CONF|NGX_HTTP_SIF_CONF|NGX_HTTP_LOC_CONF|NGX_HTTP_LIF_CONF|NGX_CONF_TAKE23,
+	{ ngx_string("dogstatsd_timing"),
+	  NGX_HTTP_SRV_CONF|NGX_HTTP_SIF_CONF|NGX_HTTP_LOC_CONF|NGX_HTTP_LIF_CONF|NGX_CONF_TAKE23|NGX_CONF_TAKE4,
 	  ngx_http_dogstatsd_add_timing,
 	  NGX_HTTP_LOC_CONF_OFFSET,
 	  0,
@@ -243,21 +248,22 @@ ngx_http_dogstatsd_handler(ngx_http_request_t *r)
 	ngx_uint_t 			      c;
 	ngx_uint_t				  n;
 	ngx_str_t				  s;
+	ngx_str_t				  t;
 	ngx_flag_t				  b;
 
     ngx_log_debug0(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
-                   "http statsd handler");
+                   "http dogstatsd handler");
 
     ulcf = ngx_http_get_module_loc_conf(r, ngx_http_dogstatsd_module);
 
     if (ulcf->off == 1 || ulcf->endpoint == NULL) {
-		ngx_log_debug0(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "statsd: handler off");
+		ngx_log_debug0(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "dogstatsd: handler off");
         return NGX_OK;
     }
 
 	// Use a random distribution to sample at sample rate.
 	if (ulcf->sample_rate < 100 && (uint) (ngx_random() % 100) >= ulcf->sample_rate) {
-		ngx_log_debug0(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "statsd: skipping sample");
+		ngx_log_debug0(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "dogstatsd: skipping sample");
 		return NGX_OK;
 	}
 
@@ -269,11 +275,12 @@ ngx_http_dogstatsd_handler(ngx_http_request_t *r)
 		ngx_escape_statsd_key(s.data, s.data, s.len);
 
 		n = ngx_http_dogstatsd_metric_get_value(r, stat.cmetric, stat.metric);
+		t = ngx_http_dogstatsd_key_get_value(r, stat.ctags, stat.tags);
 		b = ngx_http_dogstatsd_valid_get_value(r, stat.cvalid, stat.valid);
 
 		if (b == 0 || s.len == 0 || n <= 0) {
 			// Do not log if not valid, key is invalid, or valud is lte 0.
-			ngx_log_debug0(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "statsd: no value to send");
+			ngx_log_debug0(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "dogstatsd: no value to send");
          	continue;
 		};
 
@@ -287,9 +294,17 @@ ngx_http_dogstatsd_handler(ngx_http_request_t *r)
 
 		if (metric_type) {
 			if (ulcf->sample_rate < 100) {
-				p = ngx_snprintf(line, STATSD_MAX_STR, "%V:%d|%s|@0.%02d", &s, n, metric_type, ulcf->sample_rate);
+				if (t.len == 0) {
+					p = ngx_snprintf(line, STATSD_MAX_STR, "%V:%d|%s|@0.%02d", &s, n, metric_type, ulcf->sample_rate);
+				} else {
+					p = ngx_snprintf(line, STATSD_MAX_STR, "%V:%d|%s|@0.%02d|#%V", &s, n, metric_type, ulcf->sample_rate, &t);
+				}
 			} else {
-				p = ngx_snprintf(line, STATSD_MAX_STR, "%V:%d|%s", &s, n, metric_type);
+				if (t.len == 0) {
+					p = ngx_snprintf(line, STATSD_MAX_STR, "%V:%d|%s", &s, n, metric_type);
+				} else {
+					p = ngx_snprintf(line, STATSD_MAX_STR, "%V:%d|%s|#%V", &s, n, metric_type, &t);
+				}
 			}
 			ngx_http_dogstatsd_udp_send(ulcf->endpoint, line, p - line);
 		}
@@ -303,7 +318,7 @@ static ngx_int_t ngx_dogstatsd_init_endpoint(ngx_conf_t *cf, ngx_udp_endpoint_t 
     ngx_resolver_connection_t  *rec;
 
 	ngx_log_debug0(NGX_LOG_DEBUG_HTTP, cf->log, 0,
-			   "statsd: initting endpoint");
+			   "dogstatsd: initting endpoint");
 
     cln = ngx_pool_cleanup_add(cf->pool, 0);
     if(cln == NULL) {
@@ -459,8 +474,10 @@ ngx_http_dogstatsd_merge_loc_conf(ngx_conf_t *cf, void *parent, void *child)
 			stat->type = prev_stat.type;
 			stat->key = prev_stat.key;
 			stat->metric = prev_stat.metric;
+			stat->tags = prev_stat.tags;
 			stat->ckey = prev_stat.ckey;
 			stat->cmetric = prev_stat.cmetric;
+			stat->ctags = prev_stat.ctags;
 			stat->valid = prev_stat.valid;
 			stat->cvalid = prev_stat.cvalid;
 		};
@@ -535,6 +552,8 @@ ngx_http_dogstatsd_add_stat(ngx_conf_t *cf, ngx_command_t *cmd, void *conf, ngx_
 	ngx_http_compile_complex_value_t    key_ccv;
 	ngx_http_complex_value_t			metric_cv;
 	ngx_http_compile_complex_value_t    metric_ccv;
+	ngx_http_complex_value_t            tags_cv;
+	ngx_http_compile_complex_value_t    tags_ccv;
 	ngx_http_complex_value_t			valid_cv;
 	ngx_http_compile_complex_value_t    valid_ccv;
     ngx_str_t                   		*value;
@@ -611,28 +630,54 @@ ngx_http_dogstatsd_add_stat(ngx_conf_t *cf, ngx_command_t *cmd, void *conf, ngx_
 	}
 
 	if (cf->args->nelts > 3) {
-		ngx_memzero(&valid_ccv, sizeof(ngx_http_compile_complex_value_t));
-		valid_ccv.cf = cf;
-		valid_ccv.value = &value[3];
-		valid_ccv.complex_value = &valid_cv;
+		ngx_memzero(&tags_ccv, sizeof(ngx_http_compile_complex_value_t));
+		tags_ccv.cf = cf;
+		tags_ccv.value = &value[3];
+		tags_ccv.complex_value = &tags_cv;
 
-		if (ngx_http_compile_complex_value(&valid_ccv) != NGX_OK) {
+		if (ngx_http_compile_complex_value(&tags_ccv) != NGX_OK) {
 			return NGX_CONF_ERROR;
 		}
 
-		if (valid_cv.lengths == NULL) {
-			b = ngx_http_dogstatsd_valid_value(&value[3]);
-			if (b < 0) {
+		if (tags_cv.lengths == NULL) {
+			s = ngx_http_dogstatsd_key_value(&value[3]);
+			/*if (n < 0) {
 				ngx_conf_log_error(NGX_LOG_EMERG, cf, 0, "invalid parameter \"%V\"", &value[3]);
 				return NGX_CONF_ERROR;
-			};
-			stat->valid = (ngx_flag_t) b;
+			};*/
+			stat->tags = (ngx_str_t) s;
 		} else {
-			stat->cvalid = ngx_palloc(cf->pool, sizeof(ngx_http_complex_value_t));
-			if (stat->cvalid == NULL) {
+			stat->ctags = ngx_palloc(cf->pool, sizeof(ngx_http_complex_value_t));
+			if (stat->ctags == NULL) {
 				return NGX_CONF_ERROR;
 			}
-			*stat->cvalid = valid_cv;
+			*stat->ctags = tags_cv;
+		}
+
+		if (cf->args->nelts > 4) {
+			ngx_memzero(&valid_ccv, sizeof(ngx_http_compile_complex_value_t));
+			valid_ccv.cf = cf;
+			valid_ccv.value = &value[4];
+			valid_ccv.complex_value = &valid_cv;
+
+			if (ngx_http_compile_complex_value(&valid_ccv) != NGX_OK) {
+				return NGX_CONF_ERROR;
+			}
+
+			if (valid_cv.lengths == NULL) {
+				b = ngx_http_dogstatsd_valid_value(&value[4]);
+				if (b < 0) {
+					ngx_conf_log_error(NGX_LOG_EMERG, cf, 0, "invalid parameter \"%V\"", &value[4]);
+					return NGX_CONF_ERROR;
+				};
+				stat->valid = (ngx_flag_t) b;
+			} else {
+				stat->cvalid = ngx_palloc(cf->pool, sizeof(ngx_http_complex_value_t));
+				if (stat->cvalid == NULL) {
+					return NGX_CONF_ERROR;
+				}
+				*stat->cvalid = valid_cv;
+			}
 		}
 	}
 
