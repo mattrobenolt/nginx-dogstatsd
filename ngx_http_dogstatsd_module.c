@@ -21,7 +21,12 @@
 #define STATSD_TYPE_COUNTER	0x0001
 #define STATSD_TYPE_TIMING  0x0002
 
-#define STATSD_MAX_STR 256
+/*
+ * Max StartsD message length = 1472
+ * - 1 ASCII character = 1 byte
+ * - 1 UDP packet payload = 1472 bytes ( 1500-20-8 )
+*/
+#define STATSD_MAX_STR 1472
 
 #define ngx_conf_merge_ptr_value(conf, prev, default)            		\
  	if (conf == NGX_CONF_UNSET_PTR) {                               	\
