@@ -87,7 +87,7 @@ static ngx_uint_t ngx_http_dogstatsd_metric_value(ngx_str_t *str);
 static ngx_flag_t ngx_http_dogstatsd_valid_get_value(ngx_http_request_t *r, ngx_http_complex_value_t *cv, ngx_flag_t v);
 static ngx_flag_t ngx_http_dogstatsd_valid_value(ngx_str_t *str);
 
-uintptr_t ngx_escape_statsd_key(u_char *dst, u_char *src, size_t size);
+uintptr_t ngx_escape_dogstatsd_key(u_char *dst, u_char *src, size_t size);
 
 static ngx_int_t ngx_http_dogstatsd_init(ngx_conf_t *cf);
 
@@ -272,7 +272,7 @@ ngx_http_dogstatsd_handler(ngx_http_request_t *r)
 
 		stat = stats[c];
 		s = ngx_http_dogstatsd_key_get_value(r, stat.ckey, stat.key);
-		ngx_escape_statsd_key(s.data, s.data, s.len);
+		ngx_escape_dogstatsd_key(s.data, s.data, s.len);
 
 		n = ngx_http_dogstatsd_metric_get_value(r, stat.cmetric, stat.metric);
 		t = ngx_http_dogstatsd_key_get_value(r, stat.ctags, stat.tags);
@@ -732,7 +732,7 @@ ngx_http_dogstatsd_init(ngx_conf_t *cf)
 }
 
 uintptr_t
-ngx_escape_statsd_key(u_char *dst, u_char *src, size_t size)
+ngx_escape_dogstatsd_key(u_char *dst, u_char *src, size_t size)
 {
     ngx_uint_t      n;
     uint32_t       *escape;
