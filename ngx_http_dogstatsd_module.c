@@ -354,7 +354,7 @@ ngx_dogstatsd_updater_cleanup(void *data)
     ngx_udp_endpoint_t  *e = data;
 
     ngx_log_debug0(NGX_LOG_DEBUG_CORE, ngx_cycle->log, 0,
-                   "cleanup statsd_updater");
+                   "cleanup dogstatsd_updater");
 
     if(e->udp_connection) {
         if(e->udp_connection->udp) {
