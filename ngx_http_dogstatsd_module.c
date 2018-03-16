@@ -353,7 +353,7 @@ ngx_dogstatsd_updater_cleanup(void *data)
     ngx_udp_endpoint_t  *e = data;
 
     ngx_log_debug0(NGX_LOG_DEBUG_CORE, ngx_cycle->log, 0,
-                   "cleanup statsd_updater");
+                   "cleanup dogstatsd_updater");
 
     if(e->udp_connection) {
         if(e->udp_connection->udp) {
@@ -643,14 +643,14 @@ ngx_http_dogstatsd_set_server(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
 }
 
 ngx_int_t
-ngx_cntm_set_statsd_server(ngx_url_t *target)
+ngx_cntm_set_dogstatsd_server(ngx_url_t *target)
 {
-    ngx_http_statsd_main_conf_t    *umcf;
+    ngx_http_dogstatsd_main_conf_t    *umcf;
     ngx_udp_endpoint_t *endpoint;
     ngx_str_t server_name;
     ngx_log_t *log = ngx_cycle->log;
 
-    umcf = ngx_http_cycle_get_module_main_conf(ngx_cycle, ngx_http_statsd_module);
+    umcf = ngx_http_cycle_get_module_main_conf(ngx_cycle, ngx_http_dogstatsd_module);
     if (umcf == NULL || umcf->endpoints == NULL) {
         return NGX_OK;
     }
