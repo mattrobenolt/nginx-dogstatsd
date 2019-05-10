@@ -1,0 +1,11 @@
+FROM debian:buster
+
+RUN set -ex \
+  && sed 's/deb /deb-src /' /etc/apt/sources.list >> /etc/apt/sources.list \
+  && apt-get update \
+  && apt-get install -y build-essential dpkg-dev \
+  && apt-get build-dep -y nginx-light
+
+ADD . /opt/nginx-dogstatsd
+
+CMD /opt/nginx-dogstatsd/debian-build.sh
