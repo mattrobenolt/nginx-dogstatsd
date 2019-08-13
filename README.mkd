@@ -34,8 +34,8 @@ This is how to use the nginx-dogstatsd module:
 				dogstatsd_count "your_product.pages.index_responses" 1 "" "$request_completion";
 
 				# Send a timing to "your_product.pages.index_response_time" equal to the value
-				# returned from the upstream server. If this value evaluates to 0 or empty-string,
-				# it will not be sent. Thus, there is no need to add a test.
+				# returned from the upstream server. If this value evaluates to empty-string
+				# it will not be sent. Thus, there is no need to add a test. 0 values are sent as timings since they are significant.
 				dogstatsd_timing "your_product.pages.index_response_time" "$upstream_response_time";
 
 				# Increment a key based on the value of a custom header. Only sends the value if
